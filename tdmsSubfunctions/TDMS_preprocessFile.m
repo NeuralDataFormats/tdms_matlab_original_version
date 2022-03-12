@@ -210,6 +210,7 @@ while ftell(fid) ~= eofPosition
     %======================================================================
     %                       META INFORMATION PROCESSING
     %======================================================================
+    
     if flags.hasMetaData
         
         %Get # of changed objects
@@ -357,8 +358,7 @@ while ftell(fid) ~= eofPosition
                         fprintf(2,'objName: %s\n',objName);
                     end
             end
-            
-            
+
             %--------------------------------------------------------------
             %POPULATE ORDER TO RETRIEVE RAW DATA
             %--------------------------------------------------------------
@@ -419,6 +419,8 @@ while ftell(fid) ~= eofPosition
                 fprintf(2,'end of index position: %d\n',ftell(fid));
             end
         end
+        
+        
     end
     %======================================================================
     %               END OF META DATA PROCESSING
@@ -433,22 +435,36 @@ while ftell(fid) ~= eofPosition
     if ~flags.hasRawData || byteSizeRaw == 0
         segInfo(n_segs).nChunks = 0;
     else
-        segInfo(n_segs).objOrder      = obj_order(1:cur_obj_list_count);
-        segInfo(n_segs).nRawObjects   = cur_obj_list_count;
-        segInfo(n_segs).nSamplesRead  = n_values_read(1:cur_obj_list_count);
+      	%JAH 3/3/2022
+        %Problems occurred when we don't have a new object list
+        %but for an object currently being read we specify it doesn't 
+        %have raw data when it did previously
+        temp_obj_order = obj_order(1:cur_obj_list_count);
+        raw_data_mask = objectHasRawData(temp_obj_order);
+        temp_obj_order = obj_order(raw_data_mask);
+        
+        segInfo(n_segs).objOrder      = temp_obj_order;
+        
+        n_data_objects = sum(raw_data_mask);
+        segInfo(n_segs).nRawObjects   = n_data_objects;
+        
+        temp = n_values_read(1:cur_obj_list_count);
+        n_samples_read = temp(raw_data_mask);
+        segInfo(n_segs).nSamplesRead  = n_samples_read;
+        
         segInfo(n_segs).isInterleaved = flags.isInterleaved;
         segInfo(n_segs).isBigEndian   = flags.isBigEndian;
         
         %# OF CHUNK PROCESSING
-        %------------------------------------------------------------------
-        totalBytesPerChunk = sum([rawDataInfo(obj_order(1:cur_obj_list_count)).totalSizeBytes]);
+        %------------------------------------------------------------------        
+        totalBytesPerChunk = sum([rawDataInfo(temp_obj_order).totalSizeBytes]);
         nChunks            = byteSizeRaw/totalBytesPerChunk;
         
         %Some error checking
         %------------------------------------------
         if DEBUG
             fprintf(2,'nChunks: %d\n',nChunks);
-            fprintf(2,'nSamplesRead: %s\n',mat2str(n_values_read(1:cur_obj_list_count)));
+            fprintf(2,'nSamplesRead: %s\n',mat2str(n_samples_read));
             fprintf(2,'totalBytesPerChunk: %d\n',totalBytesPerChunk);
             fprintf(2,'byteSizeRaw: %d\n',byteSizeRaw);
         end
@@ -460,9 +476,9 @@ while ftell(fid) ~= eofPosition
         
         chunkByteOffset = 0;
         %Increment the number of data points
-        for iObject = 1:cur_obj_list_count
+        for iObject = 1:n_data_objects
             
-            curIndex = obj_order(iObject);
+            curIndex = temp_obj_order(iObject);
             
             nSamplesReadCurObject = rawDataInfo(curIndex).numberOfValues;
             
